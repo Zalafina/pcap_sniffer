@@ -4,7 +4,7 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 LIBS += -L$$PWD/libpcap/lib
-LIBS += -lpcap
+LIBS += -lpcap -lpthread
 
 INCLUDEPATH += libpcap/include
 
