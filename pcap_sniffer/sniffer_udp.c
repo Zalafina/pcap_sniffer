@@ -222,6 +222,8 @@ static void* capture_packetThread() {
 int main(int argc, char *argv[])
 {
     char errbuf[PCAP_ERRBUF_SIZE];
+    char errbuf1[PCAP_ERRBUF_SIZE];
+    pcap_t *handle;
     pcap_if_t *interfaces;
     char filter_exp[FILTER_EXP_MAX_SIZE] = {0};
     struct bpf_program fp;
@@ -240,30 +242,43 @@ int main(int argc, char *argv[])
     printf("filter_exp:%s\n",filter_exp);
 #endif
 
-    if(pcap_findalldevs(&interfaces,errbuf)==-1)
+    if(pcap_findalldevs(&interfaces,errbuf1)==-1)
     {
         printf("\nerror in pcap findall devs");
         return -1;
     }
 
     printf("\nFirst network interfaces: %s\n\n", interfaces->name);
-    if ((pd = pcap_open_live(interfaces->name, BUFSIZ, NOT_PROMISCUOUS_MODE, TIMEOUT, errbuf)) == NULL) {
-        printf("%s\n", errbuf);
+    if ((handle = pcap_open_live(interfaces->name, BUFSIZ, NOT_PROMISCUOUS_MODE, TIMEOUT, errbuf1)) == NULL) {
+        printf("%s\n", errbuf1);
         return 1;
     }
 
+    pd = pcap_create(interfaces->name, errbuf);
+    if (pd == NULL){
+        printf("couldn't pcap_create:%s\n",errbuf);
+        return -1;
+    }
+
     status = pcap_set_snaplen(pd, 65535);
+    if (status != 0){
+        printf("%s: pcap_set_snaplen failed: %s\n",dev,pcap_statustostr(status));
+    }
+
     status = pcap_set_immediate_mode(pd, 1);
+    if (status != 0){
+        printf("%s: pcap_set_immediate_mode failed: %s",dev,pcap_statustostr(status));
+    }
 
     (void)status;
 
-//    status = pcap_activate(pd);
-//    if (status < 0) {
-//        printf("pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
-//    }
-//    else if (status > 0) {
-//        printf("warring pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
-//    }
+    status = pcap_activate(pd);
+    if (status < 0) {
+        printf("pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
+    }
+    else if (status > 0) {
+        printf("warring pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
+    }
 
     if (pcap_lookupnet(interfaces->name, &netp, &maskp, errbuf) < 0) {
         netp = 0;
@@ -289,6 +304,9 @@ int main(int argc, char *argv[])
             printf("Failed to create processcapture_thread. (retval=%d[%s])", error, strerror(error));
         }
     }
+
+    pcap_close(handle);
+
     while(1){
         sleep(5);
     }
