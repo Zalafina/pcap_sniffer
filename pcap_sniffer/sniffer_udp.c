@@ -16,16 +16,18 @@
 #define LOG_OUTPUT                  /* Log output switch */
 //#define LOG_OUTPUT_EXTRA            /* Log output extra switch */
 
-#define USE_IMMEDIATE_MODE            /* Use immediate mode switch */
+//#define USE_IMMEDIATE_MODE            /* Use immediate mode switch */
 
 #define INFINITY_COUNT 0            /* number to capture packets(INFINITY) */
-#define TIMEOUT -1                  /* for pcap_open_live() */
+#define TIMEOUT         200         /* for pcap_open_live() capture time out in unit of ms */
 #define NOT_PROMISCUOUS_MODE 0      /* Do not set promiscuous mode */
 #define PROMISCUOUS_MODE 1          /* Set promiscuous mode */
 
 
-#define BUFFER_SIZE     524288      /* 512K bytes */
+#define SNAP_BUFFER_SIZE    0x10000
+#define BUFFER_SIZE         5242880      /* 5M bytes */
 #define DEV_NAME 20
+#define TIME_STR    50
 #define FILTER_EXP_MAX_SIZE 200
 #define DST_HOST  "dst "
 #define SRC_HOST  "src "
@@ -86,7 +88,14 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
     printf("Packet id:%d\n",++(*id));
     printf("Packet length:%d\n",pkthdr->len);
     printf("Packet of bytes:%d\n",pkthdr->caplen);
-    printf("Packet time:%s\n",ctime((const time_t *)&pkthdr->ts.tv_sec));
+    char time[TIME_STR] = {0};
+    char time_us[TIME_STR] = {0};
+    strcat(time, ctime((const time_t *)&pkthdr->ts.tv_sec));
+    size_t time_len = strlen(time);
+    if (time_len>6){
+        strncpy(time_us, time, time_len-6);
+    }
+    printf("Packet time:%s.%05ld\n", time_us, pkthdr->ts.tv_usec);
 #endif
 
     ETHHEADER *eth_header = (ETHHEADER*)packet;
@@ -101,9 +110,9 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
             strcpy(strType,Proto[ip_header->proto]);
 
 #ifdef LOG_OUTPUT
-        printf("Source MAC: %02X-%02X-%02X-%02X-%02X-%02X==>",eth_header->SrcMac[0],eth_header->SrcMac[1],eth_header->SrcMac[2],eth_header->SrcMac[3],eth_header->SrcMac[4],eth_header->SrcMac[5]);
+        printf("Source MAC: %02X-%02X-%02X-%02X-%02X-%02X ==> ",eth_header->SrcMac[0],eth_header->SrcMac[1],eth_header->SrcMac[2],eth_header->SrcMac[3],eth_header->SrcMac[4],eth_header->SrcMac[5]);
         printf("Dest MAC: %02X-%02X-%02X-%02X-%02X-%02X\n",eth_header->DestMac[0],eth_header->DestMac[1],eth_header->DestMac[2],eth_header->DestMac[3],eth_header->DestMac[4],eth_header->DestMac[5]);
-        printf("Source IP: %d.%d.%d.%d==>",ip_header->sourceIP[0],ip_header->sourceIP[1],ip_header->sourceIP[2],ip_header->sourceIP[3]);
+        printf("Source IP: %d.%d.%d.%d ==> ",ip_header->sourceIP[0],ip_header->sourceIP[1],ip_header->sourceIP[2],ip_header->sourceIP[3]);
         printf("Dest IP: %d.%d.%d.%d\n",ip_header->destIP[0],ip_header->destIP[1],ip_header->destIP[2],ip_header->destIP[3]);
         printf("Protocol: %s\n",strType);
 #endif
@@ -115,7 +124,7 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
         //printf("Source Portl: %02X Source Porth %02X\n",udp_header->sourceportl,udp_header->sourceporth);
         //printf("Dest Portl: %02X Dest Porth %02X\n",udp_header->destportl,udp_header->destporth);
 
-        printf("Source Port: %d==>",(((0x00FF)&(udp_header->sourceportl))|((0xFF00)&(udp_header->sourceporth <<8))));
+        printf("Source Port: %d ==> ",(((0x00FF)&(udp_header->sourceportl))|((0xFF00)&(udp_header->sourceporth <<8))));
         printf("Dest Port: %d\n",(((0x00FF)&(udp_header->destportl))|((0xFF00)&(udp_header->destporth <<8))));
 
         //printf("UDP checksum: %04X\n",udp_header->checksum);
@@ -197,11 +206,12 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
             printf("\n\n");
 #endif
 
+            int ret;
+            ret = pcap_sendpacket(pd_send, (const u_char*)buffer, pkthdr->len);
 
-            if(pcap_sendpacket(pd_send, (const u_char*)buffer, pkthdr->len) == -1){
-#ifdef LOG_OUTPUT
-                printf("[pcap_sendpacket error]\n");
-#endif
+            if (ret < 0) {
+                printf("\n[pcap_sendpacket error]\n");
+                exit(1);
             }
 
             free(buffer);
@@ -242,7 +252,7 @@ int main(int argc, char *argv[])
     strcat(filter_exp,CUSTOM_PORT);
 
 #ifdef LOG_OUTPUT
-    printf("filter_exp:%s\n",filter_exp);
+    printf("filter_exp : %s\n",filter_exp);
 #endif
 
     if(pcap_findalldevs(&interfaces,errbuf)==-1)
@@ -257,13 +267,14 @@ int main(int argc, char *argv[])
 //        return 1;
 //    }
 
+    /* Create Capture handle >>> */
     pd = pcap_create(interfaces->name, errbuf);
     if (pd == NULL){
         printf("couldn't pcap_create:%s\n",errbuf);
         return -1;
     }
 
-    status = pcap_set_snaplen(pd, 65535);
+    status = pcap_set_snaplen(pd, SNAP_BUFFER_SIZE);
     if (status != 0){
         printf("%s: pcap_set_snaplen failed: %s\n", interfaces->name, pcap_statustostr(status));
     }
@@ -296,6 +307,11 @@ int main(int argc, char *argv[])
     if (status != 0){
         printf("%s: pcap_set_immediate_mode failed: %s", interfaces->name, pcap_statustostr(status));
     }
+#else
+    status = pcap_set_timeout(pd, TIMEOUT);
+    if (status != 0){
+        printf("%s: pcap_set_timeout failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
 #endif
 
     status= pcap_set_promisc(pd, 0);
@@ -327,19 +343,65 @@ int main(int argc, char *argv[])
     if (pcap_setfilter(pd, &fp) < 0){
         printf("pcap_setfilter : %s", pcap_geterr(pd));
     }
+    /* Create Capture handle <<< */
 
-    if((pd_send = pcap_open_live(interfaces->name, 0x10000, PCAP_OPENFLAG_DATATX_UDP | PCAP_OPENFLAG_NOCAPTURE_RPCAP, 1000, errbuf)) == NULL){
-        printf("[pcap_open error] : %s\n", errbuf);
-    }
-    else{
-        int error = 0;
-        error = pthread_create(&processcapture_thread, NULL, capture_packetThread, NULL);
-        if (0 != error){
-            printf("Failed to create processcapture_thread. (retval=%d[%s])", error, strerror(error));
-        }
+
+    /* Create Send handle >>> */
+    pd_send = pcap_create(interfaces->name, errbuf);
+    if (pd_send == NULL){
+        printf("SEND -> couldn't pcap_create:%s\n",errbuf);
+        return -1;
     }
 
-//    pcap_close(handle);
+    status = pcap_set_snaplen(pd_send, SNAP_BUFFER_SIZE);
+    if (status != 0){
+        printf("SEND -> %s: pcap_set_snaplen failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
+
+//    status = pcap_set_buffer_size(pd_send, BUFFER_SIZE);
+//    if (status != 0){
+//        printf("SEND -> %s: pcap_set_buffer_size failed: %s\n", interfaces->name, pcap_statustostr(status));
+//    }
+
+#ifdef USE_IMMEDIATE_MODE
+    status = pcap_set_immediate_mode(pd_send, 1);
+    if (status != 0){
+        printf("SEND -> %s: pcap_set_immediate_mode failed: %s", interfaces->name, pcap_statustostr(status));
+    }
+#else
+    status = pcap_set_timeout(pd_send, TIMEOUT);
+    if (status != 0){
+        printf("SEND -> %s: pcap_set_timeout failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
+#endif
+
+    status= pcap_set_promisc(pd_send, 0);
+
+    if (status != 0){
+        printf("SEND -> %s: pcap_set_promisc failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
+
+    (void)status;
+
+    status = pcap_activate(pd_send);
+    if (status < 0) {
+        printf("SEND -> pcap_activate -> %s: %s\n(%s)\n", interfaces->name, pcap_statustostr(status), pcap_geterr(pd));
+    }
+    else if (status > 0) {
+        printf("SEND -> warring pcap_activate -> %s: %s\n(%s)\n", interfaces->name, pcap_statustostr(status), pcap_geterr(pd));
+    }
+    /* Create Send handle <<< */
+
+
+    /* Create capture thread >>> */
+    int error = 0;
+    error = pthread_create(&processcapture_thread, NULL, capture_packetThread, NULL);
+    if (0 != error){
+        printf("Failed to create processcapture_thread. (retval=%d[%s])\n", error, strerror(error));
+    }
+    /* Create capture thread <<< */
+
+
     pcap_freealldevs(interfaces);
 
     while(1){
@@ -347,5 +409,5 @@ int main(int argc, char *argv[])
     }
 
     pcap_close(pd);
-
+    printf("Program Exit.\n");
 }
