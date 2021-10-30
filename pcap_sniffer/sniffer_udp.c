@@ -19,7 +19,7 @@
 //#define USE_IMMEDIATE_MODE            /* Use immediate mode switch */
 
 #define INFINITY_COUNT 0            /* number to capture packets(INFINITY) */
-#define TIMEOUT         200         /* for pcap_open_live() capture time out in unit of ms */
+#define TIMEOUT         2000         /* for pcap_open_live() capture time out in unit of ms */
 #define NOT_PROMISCUOUS_MODE 0      /* Do not set promiscuous mode */
 #define PROMISCUOUS_MODE 1          /* Set promiscuous mode */
 
