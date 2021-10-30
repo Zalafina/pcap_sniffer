@@ -268,6 +268,24 @@ int main(int argc, char *argv[])
         printf("%s: pcap_set_snaplen failed: %s\n", interfaces->name, pcap_statustostr(status));
     }
 
+    status = pcap_can_set_rfmon(pd);
+
+    if (1 == status){
+        status = pcap_set_rfmon(pd, 1);
+        if (status != 0){
+            printf("%s: pcap_set_rfmon failed: %s\n", interfaces->name, pcap_statustostr(status));
+        }
+        else{
+            printf("%s: pcap_set_rfmon success.\n", interfaces->name);
+        }
+    }
+    else if(0 == status){
+        printf("Interface [%s] does not support monitor mode!!!\n", interfaces->name);
+    }
+    else{
+        printf("%s: pcap_can_set_rfmon failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
+
     status = pcap_set_buffer_size(pd, BUFFER_SIZE);
     if (status != 0){
         printf("%s: pcap_set_buffer_size failed: %s\n", interfaces->name, pcap_statustostr(status));
