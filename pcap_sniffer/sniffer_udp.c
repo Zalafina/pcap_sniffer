@@ -16,11 +16,15 @@
 #define LOG_OUTPUT                  /* Log output switch */
 //#define LOG_OUTPUT_EXTRA            /* Log output extra switch */
 
+#define USE_IMMEDIATE_MODE            /* Use immediate mode switch */
+
 #define INFINITY_COUNT 0            /* number to capture packets(INFINITY) */
 #define TIMEOUT -1                  /* for pcap_open_live() */
 #define NOT_PROMISCUOUS_MODE 0      /* Do not set promiscuous mode */
 #define PROMISCUOUS_MODE 1          /* Set promiscuous mode */
 
+
+#define BUFFER_SIZE     524288      /* 512K bytes */
 #define DEV_NAME 20
 #define FILTER_EXP_MAX_SIZE 200
 #define DST_HOST  "dst "
@@ -73,7 +77,7 @@ pthread_t processcapture_thread;
 char *CUSTOM_PORT = "30005";
 char *customersip = "192.168.3.116";
 
-void getPacket(u_char* arg,const struct pcap_pkthdr* pkthdr, const u_char* packet)
+void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* packet)
 {
     int* id = (int *)arg;
 
@@ -222,8 +226,7 @@ static void* capture_packetThread() {
 int main(int argc, char *argv[])
 {
     char errbuf[PCAP_ERRBUF_SIZE];
-    char errbuf1[PCAP_ERRBUF_SIZE];
-    pcap_t *handle;
+//    pcap_t *handle;
     pcap_if_t *interfaces;
     char filter_exp[FILTER_EXP_MAX_SIZE] = {0};
     struct bpf_program fp;
@@ -242,17 +245,17 @@ int main(int argc, char *argv[])
     printf("filter_exp:%s\n",filter_exp);
 #endif
 
-    if(pcap_findalldevs(&interfaces,errbuf1)==-1)
+    if(pcap_findalldevs(&interfaces,errbuf)==-1)
     {
         printf("\nerror in pcap findall devs");
         return -1;
     }
 
     printf("\nFirst network interfaces: %s\n\n", interfaces->name);
-    if ((handle = pcap_open_live(interfaces->name, BUFSIZ, NOT_PROMISCUOUS_MODE, TIMEOUT, errbuf1)) == NULL) {
-        printf("%s\n", errbuf1);
-        return 1;
-    }
+//    if ((handle = pcap_open_live(interfaces->name, BUFSIZ, NOT_PROMISCUOUS_MODE, TIMEOUT, errbuf)) == NULL) {
+//        printf("%s\n", errbuf);
+//        return 1;
+//    }
 
     pd = pcap_create(interfaces->name, errbuf);
     if (pd == NULL){
@@ -262,22 +265,35 @@ int main(int argc, char *argv[])
 
     status = pcap_set_snaplen(pd, 65535);
     if (status != 0){
-        printf("%s: pcap_set_snaplen failed: %s\n",dev,pcap_statustostr(status));
+        printf("%s: pcap_set_snaplen failed: %s\n", interfaces->name, pcap_statustostr(status));
     }
 
+    status = pcap_set_buffer_size(pd, BUFFER_SIZE);
+    if (status != 0){
+        printf("%s: pcap_set_buffer_size failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
+
+#ifdef USE_IMMEDIATE_MODE
     status = pcap_set_immediate_mode(pd, 1);
     if (status != 0){
-        printf("%s: pcap_set_immediate_mode failed: %s",dev,pcap_statustostr(status));
+        printf("%s: pcap_set_immediate_mode failed: %s", interfaces->name, pcap_statustostr(status));
+    }
+#endif
+
+    status= pcap_set_promisc(pd, 0);
+
+    if (status != 0){
+        printf("%s: pcap_set_promisc failed: %s", interfaces->name, pcap_statustostr(status));
     }
 
     (void)status;
 
     status = pcap_activate(pd);
     if (status < 0) {
-        printf("pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
+        printf("pcap_activate -> %s: %s\n(%s)", interfaces->name, pcap_statustostr(status), pcap_geterr(pd));
     }
     else if (status > 0) {
-        printf("warring pcap_activate -> %s: %s\n(%s)", interfaces->name,pcap_statustostr(status), pcap_geterr(pd));
+        printf("warring pcap_activate -> %s: %s\n(%s)", interfaces->name, pcap_statustostr(status), pcap_geterr(pd));
     }
 
     if (pcap_lookupnet(interfaces->name, &netp, &maskp, errbuf) < 0) {
@@ -294,7 +310,7 @@ int main(int argc, char *argv[])
         printf("pcap_setfilter : %s", pcap_geterr(pd));
     }
 
-    if((pd_send = pcap_open_live(interfaces->name, 0x10000, PCAP_OPENFLAG_DATATX_UDP|PCAP_OPENFLAG_NOCAPTURE_RPCAP, 1000, errbuf)) == NULL){
+    if((pd_send = pcap_open_live(interfaces->name, 0x10000, PCAP_OPENFLAG_DATATX_UDP | PCAP_OPENFLAG_NOCAPTURE_RPCAP, 1000, errbuf)) == NULL){
         printf("[pcap_open error] : %s\n", errbuf);
     }
     else{
@@ -305,7 +321,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    pcap_close(handle);
+//    pcap_close(handle);
+    pcap_freealldevs(interfaces);
 
     while(1){
         sleep(5);
