@@ -360,10 +360,10 @@ int main(int argc, char *argv[])
         printf("SEND -> %s: pcap_set_snaplen failed: %s\n", interfaces->name, pcap_statustostr(status));
     }
 
-//    status = pcap_set_buffer_size(pd_send, BUFFER_SIZE);
-//    if (status != 0){
-//        printf("SEND -> %s: pcap_set_buffer_size failed: %s\n", interfaces->name, pcap_statustostr(status));
-//    }
+    status = pcap_set_buffer_size(pd_send, BUFFER_SIZE);
+    if (status != 0){
+        printf("SEND -> %s: pcap_set_buffer_size failed: %s\n", interfaces->name, pcap_statustostr(status));
+    }
 
 #ifdef USE_IMMEDIATE_MODE
     status = pcap_set_immediate_mode(pd_send, 1);
