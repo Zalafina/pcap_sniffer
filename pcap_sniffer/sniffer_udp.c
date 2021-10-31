@@ -13,13 +13,14 @@
 #include <unistd.h>
 #include <string.h>
 
-#define LOG_OUTPUT                  /* Log output switch */
-//#define LOG_OUTPUT_EXTRA            /* Log output extra switch */
+#define DEBUG_LOG_OUTPUT                /* Startup log output switch */
+//#define CAPTURE_PACKET_LOG_OUTPUT     /* Log output switch */
+//#define LOG_OUTPUT_EXTRA              /* Log output extra switch */
 
 //#define USE_IMMEDIATE_MODE            /* Use immediate mode switch */
 
 #define INFINITY_COUNT 0            /* number to capture packets(INFINITY) */
-#define TIMEOUT         2000         /* for pcap_open_live() capture time out in unit of ms */
+#define TIMEOUT         200         /* for pcap_open_live() capture time out in unit of ms */
 #define NOT_PROMISCUOUS_MODE 0      /* Do not set promiscuous mode */
 #define PROMISCUOUS_MODE 1          /* Set promiscuous mode */
 
@@ -70,6 +71,7 @@ char *Proto[]={
     "Peserved","ICMP","IGMP","GGP","IP","ST","TCP"
 };
 
+static int packet_count = 0;
 static pcap_t *pd;
 static pcap_t* pd_send = NULL;
 //char customersip[FILTER_EXP_MAX_SIZE];
@@ -82,10 +84,11 @@ char *customersip = "192.168.3.116";
 void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* packet)
 {
     int* id = (int *)arg;
+    (*id)++;
 
-#ifdef LOG_OUTPUT
+#ifdef CAPTURE_PACKET_LOG_OUTPUT
     printf("************************************\n");
-    printf("Packet id:%d\n",++(*id));
+    printf("Packet id:%d\n",(*id));
     printf("Packet length:%d\n",pkthdr->len);
     printf("Packet of bytes:%d\n",pkthdr->caplen);
     char time[TIME_STR] = {0};
@@ -109,7 +112,7 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
         else
             strcpy(strType,Proto[ip_header->proto]);
 
-#ifdef LOG_OUTPUT
+#ifdef CAPTURE_PACKET_LOG_OUTPUT
         printf("Source MAC: %02X-%02X-%02X-%02X-%02X-%02X ==> ",eth_header->SrcMac[0],eth_header->SrcMac[1],eth_header->SrcMac[2],eth_header->SrcMac[3],eth_header->SrcMac[4],eth_header->SrcMac[5]);
         printf("Dest MAC: %02X-%02X-%02X-%02X-%02X-%02X\n",eth_header->DestMac[0],eth_header->DestMac[1],eth_header->DestMac[2],eth_header->DestMac[3],eth_header->DestMac[4],eth_header->DestMac[5]);
         printf("Source IP: %d.%d.%d.%d ==> ",ip_header->sourceIP[0],ip_header->sourceIP[1],ip_header->sourceIP[2],ip_header->sourceIP[3]);
@@ -120,7 +123,7 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
         //print packet
         UDPHEADER *udp_header = (UDPHEADER*)(packet+14+20);
 
-#ifdef LOG_OUTPUT
+#ifdef CAPTURE_PACKET_LOG_OUTPUT
         //printf("Source Portl: %02X Source Porth %02X\n",udp_header->sourceportl,udp_header->sourceporth);
         //printf("Dest Portl: %02X Dest Porth %02X\n",udp_header->destportl,udp_header->destporth);
 
@@ -131,7 +134,7 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
         //printf("UDP data len: %d\n",udp_header->total_len - 8);
 #endif
 
-#ifdef LOG_OUTPUT
+#ifdef CAPTURE_PACKET_LOG_OUTPUT
         u_int start;
         start = 14 + 20 + 8; //eth header + ip header
         for(u_int i = start; i < pkthdr->len; ++i){
@@ -222,7 +225,6 @@ void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pack
 }
 
 static void* capture_packetThread() {
-    int packet_count;
     packet_count = 0;
 
     if (pcap_loop(pd, INFINITY_COUNT, getPacket, (u_char *)&packet_count) < 0) {
@@ -251,7 +253,7 @@ int main(int argc, char *argv[])
     strcat(filter_exp,UDP_PORT_PRE_STR);
     strcat(filter_exp,CUSTOM_PORT);
 
-#ifdef LOG_OUTPUT
+#ifdef DEBUG_LOG_OUTPUT
     printf("filter_exp : %s\n",filter_exp);
 #endif
 
@@ -406,6 +408,13 @@ int main(int argc, char *argv[])
 
     while(1){
         sleep(5);
+#ifdef DEBUG_LOG_OUTPUT
+        static int printed_packet_count = 0;
+        if (printed_packet_count != packet_count){
+            printed_packet_count = packet_count;
+            printf("Captured packet count [%d]\n", printed_packet_count);
+        }
+#endif
     }
 
     pcap_close(pd);
