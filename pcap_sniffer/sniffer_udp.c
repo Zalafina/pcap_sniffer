@@ -75,7 +75,6 @@ char *Proto[]={
 };
 
 static int packet_count = 0;
-static int printed_packet_count = 0;
 static pcap_t *pd;
 static pcap_t* pd_send = NULL;
 //char customersip[FILTER_EXP_MAX_SIZE];
@@ -85,7 +84,7 @@ char customip_str[IP_STR] = {0};
 char customport_str[PORT_STR] = {0};
 pthread_t processcapture_thread;
 
-char *CUSTOM_PORT = "30005";
+char *CUSTOM_PORT = "30006";
 char *CUSTOM_IP = "192.168.3.116";
 
 void getPacket(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* packet)
@@ -242,6 +241,9 @@ static void* capture_packetThread() {
     return NULL;
 }
 
+#ifdef DEBUG_LOG_OUTPUT
+static int printed_packet_count = 0;
+
 void pcap_status_output(const char *ifname)
 {
     struct pcap_stat stats;
@@ -276,6 +278,7 @@ void pcap_status_output(const char *ifname)
     } else
         putc('\n', stderr);
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -501,15 +504,18 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_LOG_OUTPUT
         if (printed_packet_count != packet_count){
             printed_packet_count = packet_count;
-            pcap_status_output(dev);
-        }
-        else{
-            static int idle_output = 0;
-            idle_output++;
-            if (idle_output >= 2){
-                idle_output = 0;
-                pcap_status_output(idle_dev);
+
+            char time[TIME_STR] = {0};
+            char time_us[TIME_STR] = {0};
+            struct timeval curtime;
+            gettimeofday(&curtime, NULL);
+            strcat(time, ctime((const time_t *)&curtime.tv_sec));
+            size_t time_len = strlen(time);
+            if (time_len>6){
+                strncpy(time_us, time, time_len-6);
             }
+            printf("[%s] Captured packet count [%d]\n", time_us, printed_packet_count);
+//            pcap_status_output(dev);
         }
 #endif
     }
