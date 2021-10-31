@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 
 #define DEBUG_LOG_OUTPUT                /* Startup log output switch */
 //#define CAPTURE_PACKET_LOG_OUTPUT     /* Log output switch */
@@ -29,6 +30,7 @@
 #define BUFFER_SIZE         5242880      /* 5M bytes */
 #define DEV_NAME    50
 #define IP_STR      30
+#define PORT_STR    10
 #define TIME_STR    50
 #define FILTER_EXP_MAX_SIZE 200
 #define DST_HOST  "dst "
@@ -78,7 +80,9 @@ static pcap_t *pd;
 static pcap_t* pd_send = NULL;
 //char customersip[FILTER_EXP_MAX_SIZE];
 char dev[DEV_NAME] = {0};
+char idle_dev[DEV_NAME] = {0};
 char customip_str[IP_STR] = {0};
+char customport_str[PORT_STR] = {0};
 pthread_t processcapture_thread;
 
 char *CUSTOM_PORT = "30005";
@@ -250,6 +254,17 @@ void pcap_status_output(const char *ifname)
 
     fprintf(stderr, "%s: ", ifname);
 
+    char time[TIME_STR] = {0};
+    char time_us[TIME_STR] = {0};
+    struct timeval curtime;
+    gettimeofday(&curtime, NULL);
+    strcat(time, ctime((const time_t *)&curtime.tv_sec));
+    size_t time_len = strlen(time);
+    if (time_len>6){
+        strncpy(time_us, time, time_len-6);
+    }
+    (void)fprintf(stderr, "time:%s -> ", time_us);
+
     (void)fprintf(stderr, "%d packets captured", printed_packet_count);
     fputs(", ", stderr);
     (void)fprintf(stderr, "%u packets received by filter", stats.ps_recv);
@@ -275,10 +290,55 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    if(argc != 3){
+        (void)fprintf(stderr, "Invalid argument number[%d]\n", argc);
+        return -1;
+    }
+
+    int ip_str_len = 0;
+    ip_str_len = strlen(argv[1]);
+    if (ip_str_len < 7 || ip_str_len > 15){
+        (void)fprintf(stderr, "Invalid IPv4 Address[%s]\n", argv[1]);
+        return -1;
+    }
+
+    int dot_count = 0;
+    for (int i = 0; i < ip_str_len; i++){
+        if (*(argv[1] + i) == '.'){
+            dot_count++;
+        }
+        else if(isdigit(*(argv[1] + i))){
+        }
+        else{
+            (void)fprintf(stderr, "Invalid IPv4 Address[%s]\n", argv[1]);
+            return -1;
+        }
+    }
+
+    if (dot_count != 3){
+        (void)fprintf(stderr, "Invalid IPv4 Address[%s]\n", argv[1]);
+        return -1;
+    }
+
+    int port_number = 0;
+    port_number = atoi(argv[2]);
+    if (port_number == 0){
+        (void)fprintf(stderr, "Invalid port number argument[%s]\n", argv[2]);
+        return -1;
+    }
+
+    if (port_number <= 0 || port_number > 65535){
+        (void)fprintf(stderr, "Invalid port number[%d]\n", port_number);
+        return -1;
+    }
+
+    strcat(customip_str,    argv[1]);
+    strcat(customport_str,  argv[2]);
+
     strcat(filter_exp,SRC_HOST);
-    strcat(filter_exp,CUSTOM_IP);
+    strcat(filter_exp,customip_str);
     strcat(filter_exp,UDP_PORT_PRE_STR);
-    strcat(filter_exp,CUSTOM_PORT);
+    strcat(filter_exp,customport_str);
 
 #ifdef DEBUG_LOG_OUTPUT
     printf("filter_exp : %s\n",filter_exp);
@@ -286,11 +346,13 @@ int main(int argc, char *argv[])
 
     if(pcap_findalldevs(&interfaces,errbuf)==-1)
     {
-        printf("\nerror in pcap findall devs");
+        printf("\nerror in pcap findall devs\n");
         return -1;
     }
 
     strcat(dev, interfaces->name);
+    strcat(idle_dev, "[IDLE]");
+    strcat(idle_dev, dev);
 
     printf("\nFirst network interfaces: %s\n\n", dev);
 //    if ((handle = pcap_open_live(interfaces->name, BUFSIZ, NOT_PROMISCUOUS_MODE, TIMEOUT, errbuf)) == NULL) {
@@ -440,6 +502,14 @@ int main(int argc, char *argv[])
         if (printed_packet_count != packet_count){
             printed_packet_count = packet_count;
             pcap_status_output(dev);
+        }
+        else{
+            static int idle_output = 0;
+            idle_output++;
+            if (idle_output >= 2){
+                idle_output = 0;
+                pcap_status_output(idle_dev);
+            }
         }
 #endif
     }
